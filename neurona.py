@@ -9,6 +9,7 @@ from matplotlib.pyplot import cm
 from matplotlib import cm
 from matplotlib import gridspec
 from scipy.integrate import odeint
+from scipy.optimize import fsolve
 from numpy.linalg import *
 import time
 from scipy.signal import savgol_filter
@@ -42,7 +43,7 @@ class neurona:
         self.tappl2 = 8
         self.tconn = 500
 
-    #funciones de activacion/inactivacion
+    #funciones de activacion/inactivacion. Se llaman kineticas
     def minf(self,v): return 1/(1+np.exp(-(v+40)/9))  #Representa la activación de los canales de sodio (𝑚_∞).Es la probabilidad de que las "puertas de activación" estén abiertas, permitiendo que los iones de sodio (𝑁𝑎+) entren y despolaricen la membrana (suban el voltaje).
     def hinf(self,v): return 1/(1+np.exp((v+62)/10)) #Representa la inactivación de los canales de sodio (ℎ∞ ). Es la probabilidad de que las "puertas de inactivación" estén cerradas, bloqueando la entrada de sodio para limitar el potencial de acción.
     def ninf(self,v): return 1/(1+np.exp(-(v+53)/16)) #Calcula la probabilidad de activación de los canales de potasio (𝑛_∞) en equilibrio.
@@ -116,6 +117,85 @@ class neurona:
         return t, Y
     
 
+    def jacobiano(self, y, t):
+        V1, n1, S1, V2, n2, S2 = y
+        C = self.C
+        Gin12eff = self.Gin12 if t >= self.tconn else 0.0
+        Gin21eff = self.Gin21 if t >= self.tconn else 0.0
+
+        # Funciones y derivadas
+        m1, m2 = self.minf(V1), self.minf(V2)
+        dm1, dm2 = (1/9)*m1*(1-m1), (1/9)*m2*(1-m2)
+
+        ninf1, ninf2 = self.ninf(V1), self.ninf(V2)
+        dninf1, dninf2 = (1/16)*ninf1*(1-ninf1), (1/16)*ninf2*(1-ninf2)
+
+        taun1, taun2 = self.taun(V1), self.taun(V2)
+        expn1, expn2 = np.exp((V1+53)/16), np.exp((V2+53)/16)
+        dtaun1 = -6*expn1 / (16*(1+expn1)**2)
+        dtaun2 = -6*expn2 / (16*(1+expn2)**2)
+
+        H1, H2 = self.H(V1), self.H(V2)
+        dH1, dH2 = (1/8)*(1-np.tanh(V1/4)**2), (1/8)*(1-np.tanh(V2/4)**2)
+
+        # Parámetros
+        Gl, Gna, Gk, alpha = self.Gl, self.Gna, self.Gk, self.alpha
+        El, Ena, Ek, Ein = self.El, self.Ena, self.Ek, self.Ein
+
+        # A(v,n)
+        A_v_1 = -Gl - Gna*(alpha-n1)*(3*m1**2*dm1*(V1-Ena)+m1**3) - Gk*n1**4
+        A_n_1 = Gna*m1**3*(V1-Ena) - 4*Gk*n1**3*(V1-Ek)
+
+        A_v_2 = -Gl - Gna*(alpha-n2)*(3*m2**2*dm2*(V2-Ena)+m2**3) - Gk*n2**4
+        A_n_2 = Gna*m2**3*(V2-Ena) - 4*Gk*n2**3*(V2-Ek)
+
+        # Jacobiano 6x6
+        J = np.zeros((6,6))
+
+        # f1 = dV1/dt
+        J[0,0] = (1/C**2)*A_v_1 - (Gin12eff*S2)/C
+        J[0,1] = (1/C**2)*A_n_1
+        J[0,5] = -Gin12eff*(V1-Ein)/C
+
+        # f2 = dn1/dt
+        J[1,0] = (dninf1*taun1 - (ninf1-n1)*dtaun1) / (taun1**2)
+        J[1,1] = -1/taun1
+
+        # f3 = dS1/dt
+        J[2,0] = dH1*(1-S1)/self.taurse_i
+        J[2,2] = -H1/self.taurse_i - 1/self.taudec_i
+
+        # f4 = dV2/dt
+        J[3,3] = (1/C**2)*A_v_2 - (Gin21eff*S1)/C
+        J[3,4] = (1/C**2)*A_n_2
+        J[3,2] = -Gin21eff*(V2-Ein)/C
+
+        # f5 = dn2/dt
+        J[4,3] = (dninf2*taun2 - (ninf2-n2)*dtaun2) / (taun2**2)
+        J[4,4] = -1/taun2
+
+        # f6 = dS2/dt
+        J[5,3] = dH2*(1-S2)/self.taurse_i
+        J[5,5] = -H2/self.taurse_i - 1/self.taudec_i
+
+        return J
+    
+    def hallar_equilibrio(self, Iapp, y0=None):
+        self.Iapp = Iapp
+        if y0 is None:
+            y0 = np.array([-65, self.ninf(-65), 0.0, -65, self.ninf(-65), 0.0])
+        
+        eq = fsolve(lambda y: self.network_reduced_deriv(y, 800), y0)
+        return eq
+
+    def analisis_estabilidad(self, Iapp, y0=None):
+        y_equi = self.hallar_equilibrio(Iapp, y0)
+        J = self.jacobiano(y_equi, 0)
+        eigvals, eigvecs = np.linalg.eig(J)
+        return y_equi, J, eigvals, eigvecs
+
+    
+
 ##### CURVAS DE ACTIVACION/INACTIVACION Y CONSTANTES DE TIEMPO. 
 #### Se accede con .graficar_curvas()
     def graficar_curvas(self):
@@ -149,6 +229,7 @@ class neurona:
         plt.show()
 
 
+
 ##### Potenciales de membrana de las dos neuronas a lo largo del tiempo. 
 ##### Se accede con .graficar_potenciales_de_membrana_a_lo_largo_del_tiempo(t, Y)
     def graficar_potenciales_de_membrana_a_lo_largo_del_tiempo(self, t, Y):
@@ -160,6 +241,7 @@ class neurona:
         plt.axis([0, t[-1], -80, 80])
         plt.xlabel('time [ms]', fontsize=14)
         plt.ylabel('Membrane Potential [mV]', fontsize=14)
+        plt.title(f'Potenciales de membrana (Iapp = {self.Iapp} µA/cm²)', fontsize=16)
         plt.legend(fontsize=12)
         plt.grid(True)
         plt.tight_layout()
@@ -191,3 +273,34 @@ class neurona:
 
         plt.tight_layout()
         plt.show()
+
+##### Gráfico V1 vs V2 (fase cruzada entre neuronas)
+##### Se accede con .graficar_v1v2(Y)
+    def graficar_v1v2(self,t, Y):
+        V1, V2 = Y[:, 0], Y[:, 3]
+
+        plt.figure(figsize=(8,8))
+        plt.plot(V1[50000:], V2[50000:], color="purple", linewidth=1, alpha=0.6)
+
+        # punto inicial
+        plt.scatter(V1[0], V2[0], color="green", s=80, label="Inicio")
+
+        # punto final
+        plt.scatter(V1[-1], V2[-1], color="red", s=80, label="Final")
+
+        # punto en t=500 ms
+        #idx_500 = np.argmin(np.abs(t-500))
+        #plt.scatter(V1[idx_500[0]], V2[idx_500[0]], color="blue", s=80, label="t = 500 ms")
+
+        # Línea de identidad
+        vmin = min(V1.min(), V2.min())
+        vmax = max(V1.max(), V2.max())
+        plt.plot([vmin, vmax], [vmin, vmax], 'k--', alpha=0.3, label="V₁ = V₂")
+
+        plt.xlabel("V₁ (mV)", fontsize=14)
+        plt.ylabel("V₂ (mV)", fontsize=14)
+        plt.legend(fontsize=12)
+        plt.grid(True)
+        plt.axis("equal")
+        plt.show()
+
