@@ -562,23 +562,6 @@
     
 
 
-# Funciona por separado
 
-    duración (segundos) de la simulación 3.5850374698638916
-    ====================
-    condiciones iniciales
-    ====================
-    trial 1 estado inicial: [-90, np.float64(0.2796175825175705), np.float64(0.48764543136574723), -65, np.float64(0.5349452382987099), np.float64(0.7490380656146792)]
-    trial 2 estado inicial: [-80, np.float64(0.668637009359857), np.float64(0.0013739550400734268), -65, np.float64(0.6853116491982261), np.float64(0.7646448907444464)]
-    trial 3 estado inicial: [-70, np.float64(0.2613193045981469), np.float64(0.9838398342556193), -65, np.float64(0.4484272252147491), np.float64(0.2804816491701765)]
-    trial 4 estado inicial: [-50, np.float64(0.9138896857413431), np.float64(0.721583457441657), -65, np.float64(0.6515278606824486), np.float64(0.45487018290120396)]
-    trial 5 estado inicial: [-40, np.float64(0.6851686512730157), np.float64(0.27616511318888093), -65, np.float64(0.32046612339111114), np.float64(0.24686157792889774)]
-    trial 6 estado inicial: [-30, np.float64(0.36897282719625135), np.float64(0.693524843662258), -65, np.float64(0.9869101179419707), np.float64(0.21270983131589072)]
-    trial 7 estado inicial: [10, np.float64(0.9854969924957055), np.float64(0.7179329732022951), -65, np.float64(0.4865808103611594), np.float64(0.014955980776830913)]
-    
-
-
-    
-![png](incial_red_dos_nodos_iapp_conductancia__files/incial_red_dos_nodos_iapp_conductancia__83_0.png)
     
 
